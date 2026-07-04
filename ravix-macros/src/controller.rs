@@ -111,9 +111,10 @@ pub fn expand(args: TokenStream, input: TokenStream) -> TokenStream {
             let factory_ident = format_ident!("__ravix_route_{}_{}_{idx}", self_ty_str, fn_name);
 
             // Build the base MethodRouter — two modes:
-            // • has_self=true  → struct injection: resolve Arc<Self> from container, delegate to method
+            // • has_self=true  → resolve Arc<Self> from container once at startup,
+            //                    capture in a closure (zero container cost per request)
             // • has_self=false → free-function handler: method IS the axum handler directly
-            let routing_call = if info.has_self {
+            let (preamble, routing_call) = if info.has_self {
                 let arg_names: Vec<_> = (0..info.non_self_inputs.len())
                     .map(|i| format_ident!("__arg{}", i))
                     .collect();
@@ -129,45 +130,75 @@ pub fn expand(args: TokenStream, input: TokenStream) -> TokenStream {
                     })
                     .collect();
 
-                // The wrapper is defined inside the factory fn so __wrapper names never clash.
-                let wrapper = quote! {
-                    async fn __wrapper(
-                        ::ravix::Inject(__ctrl): ::ravix::Inject<::std::sync::Arc<#self_ty>>,
-                        #(#arg_names: #arg_types),*
-                    ) -> impl ::axum::response::IntoResponse {
-                        __ctrl.#fn_name(#(#arg_names),*).await
-                    }
+                // Resolve the controller singleton once when the router is built.
+                let pre = quote! {
+                    let __ctrl = __container.resolve::<::std::sync::Arc<#self_ty>>();
                 };
 
-                match info.verb.as_str() {
-                    "GET" => quote! { { #wrapper ::axum::routing::get(__wrapper)    } },
-                    "POST" => quote! { { #wrapper ::axum::routing::post(__wrapper)   } },
-                    "PUT" => quote! { { #wrapper ::axum::routing::put(__wrapper)    } },
-                    "DELETE" => quote! { { #wrapper ::axum::routing::delete(__wrapper) } },
-                    "PATCH" => quote! { { #wrapper ::axum::routing::patch(__wrapper)  } },
+                // Each request clones the Arc (atomic refcount bump only).
+                let routing = match info.verb.as_str() {
+                    "GET" => quote! {
+                        ::axum::routing::get(move |#(#arg_names: #arg_types),*| {
+                            let __ctrl = __ctrl.clone();
+                            async move { __ctrl.#fn_name(#(#arg_names),*).await }
+                        })
+                    },
+                    "POST" => quote! {
+                        ::axum::routing::post(move |#(#arg_names: #arg_types),*| {
+                            let __ctrl = __ctrl.clone();
+                            async move { __ctrl.#fn_name(#(#arg_names),*).await }
+                        })
+                    },
+                    "PUT" => quote! {
+                        ::axum::routing::put(move |#(#arg_names: #arg_types),*| {
+                            let __ctrl = __ctrl.clone();
+                            async move { __ctrl.#fn_name(#(#arg_names),*).await }
+                        })
+                    },
+                    "DELETE" => quote! {
+                        ::axum::routing::delete(move |#(#arg_names: #arg_types),*| {
+                            let __ctrl = __ctrl.clone();
+                            async move { __ctrl.#fn_name(#(#arg_names),*).await }
+                        })
+                    },
+                    "PATCH" => quote! {
+                        ::axum::routing::patch(move |#(#arg_names: #arg_types),*| {
+                            let __ctrl = __ctrl.clone();
+                            async move { __ctrl.#fn_name(#(#arg_names),*).await }
+                        })
+                    },
                     _ => panic!("Unknown HTTP verb: {}", info.verb),
-                }
+                };
+
+                (pre, routing)
             } else {
-                match info.verb.as_str() {
+                let routing = match info.verb.as_str() {
                     "GET" => quote! { ::axum::routing::get(#self_ty::#fn_name)    },
                     "POST" => quote! { ::axum::routing::post(#self_ty::#fn_name)   },
                     "PUT" => quote! { ::axum::routing::put(#self_ty::#fn_name)    },
                     "DELETE" => quote! { ::axum::routing::delete(#self_ty::#fn_name) },
                     "PATCH" => quote! { ::axum::routing::patch(#self_ty::#fn_name)  },
                     _ => panic!("Unknown HTTP verb: {}", info.verb),
-                }
+                };
+                (quote! {}, routing)
             };
 
-            // Wrap with per-route middleware layers (innermost first)
+            // Wrap with per-route middleware layers (innermost first).
+            // from_fn_with_state passes the ContainerRef as axum state so
+            // middleware functions can optionally accept State<ContainerRef>.
             let with_layers = info.middlewares.iter().fold(routing_call, |acc, guard| {
                 quote! {
-                    #acc.route_layer(::axum::middleware::from_fn(#guard))
+                    #acc.route_layer(::axum::middleware::from_fn_with_state(
+                        ::std::sync::Arc::clone(__container),
+                        #guard,
+                    ))
                 }
             });
 
             quote! {
                 #[allow(non_snake_case)]
-                fn #factory_ident() -> ::axum::routing::MethodRouter<::ravix::ContainerRef> {
+                fn #factory_ident(__container: &::ravix::ContainerRef) -> ::axum::routing::MethodRouter<::ravix::ContainerRef> {
+                    #preamble
                     #with_layers
                 }
 

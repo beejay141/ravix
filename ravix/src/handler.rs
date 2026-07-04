@@ -15,9 +15,11 @@ pub struct RouteDescriptor {
     pub base_path: &'static str,
     /// Handler-local path from `#[get("/path")]`.
     pub path: &'static str,
-    /// Factory fn that constructs the `axum::routing::MethodRouter<ContainerRef>`.
-    /// Called exactly once during [`crate::app::App::build`].
-    pub handler: fn() -> MethodRouter<ContainerRef>,
+    /// Factory fn called once at startup. Receives the DI container, resolves
+    /// the controller singleton, and returns a `MethodRouter` backed by a closure
+    /// that captures the pre-built `Arc<Controller>` — eliminating per-request
+    /// container lookups.
+    pub handler: fn(&ContainerRef) -> MethodRouter<ContainerRef>,
 }
 
 // SAFETY: fn pointers are always Send + Sync; `&'static str` is too.

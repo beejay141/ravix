@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use ravix::{App, Container, Injectable};
+use ravix::{App, Container, CorsConfig, Injectable};
 
 mod controllers;
 mod middleware;
@@ -32,6 +32,34 @@ async fn main() {
     let ctrl = UserController::construct(&container);
     container.register(ctrl);
 
+    // ── CORS (optional) ───────────────────────────────────────────────────────
+    // Remove or adjust this for production. Wildcard origins are convenient for
+    // local development but should be restricted to specific domains in prod.
+    // NOTE: If you enable allow_credentials(), you must also specify explicit
+    // allow_origins() and allow_headers() — wildcards + credentials are invalid.
+    let cors = CorsConfig::builder()
+        .allow_origins(vec![
+            "http://localhost:3000".to_string(),
+            "http://localhost:5173".to_string(), // Vite default
+        ])
+        .allow_methods(vec![
+            "GET".to_string(),
+            "POST".to_string(),
+            "PUT".to_string(),
+            "DELETE".to_string(),
+            "PATCH".to_string(),
+        ])
+        .allow_headers(vec![
+            "content-type".to_string(),
+            "authorization".to_string(),
+        ])
+        .max_age(3600)
+        .build();
+
     // ── Boot ──────────────────────────────────────────────────────────────────
-    App::new().container(container).run("0.0.0.0:3001").await;
+    App::new()
+        .container(container)
+        .cors(cors)         // omit this line to disable CORS entirely
+        .run("0.0.0.0:3001")
+        .await;
 }

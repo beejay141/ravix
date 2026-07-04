@@ -1,6 +1,8 @@
+use std::sync::Arc;
+
 use axum::Router;
 
-use crate::{container::ContainerRef, handler::RouteDescriptor};
+use crate::{container::ContainerRef, handler::RouteDescriptor, middleware::{apply_cors, CorsConfig}};
 
 /// Assembles an `axum::Router` from every [`RouteDescriptor`] that was
 /// submitted via `inventory::submit!` (i.e. from `#[controller]` macros).
@@ -10,15 +12,26 @@ impl RouterBuilder {
     /// Iterate all registered route descriptors and merge them into one router
     /// backed by the provided DI container as shared state.
     pub fn build(container: ContainerRef) -> Router {
+        Self::build_with_cors(container, None)
+    }
+
+    /// Build the router with optional CORS configuration.
+    pub fn build_with_cors(container: ContainerRef, cors: Option<Arc<CorsConfig>>) -> Router {
         let mut router: Router<ContainerRef> = Router::new();
 
         for descriptor in inventory::iter::<RouteDescriptor>() {
             let full_path = Self::join_paths(descriptor.base_path, descriptor.path);
-            let method_router = (descriptor.handler)();
+            let method_router = (descriptor.handler)(&container);
             router = router.route(&full_path, method_router);
         }
 
-        router.with_state(container)
+        let router = router.with_state(container);
+        apply_cors(router, cors)
+    }
+
+    /// Apply CORS configuration to an already-built router.
+    pub fn apply_cors_to_router(router: Router, cors: Option<Arc<CorsConfig>>) -> Router {
+        apply_cors(router, cors)
     }
 
     /// Join a controller base path and a handler-local path into a single,
@@ -66,6 +79,9 @@ mod tests {
 
     #[test]
     fn join_nested_base() {
-        assert_eq!(RouterBuilder::join_paths("/api/v1", "/users"), "/api/v1/users");
+        assert_eq!(
+            RouterBuilder::join_paths("/api/v1", "/users"),
+            "/api/v1/users"
+        );
     }
 }

@@ -35,6 +35,7 @@ impl UserRepository for InMemoryUserRepository {
             id: Uuid::new_v4(),
             name: dto.name,
             email: dto.email,
+            is_active: dto.is_active,
         };
         self.store.lock().unwrap().insert(user.id, user.clone());
         user

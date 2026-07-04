@@ -11,7 +11,8 @@ pub use app::App;
 pub use container::{Container, ContainerRef, Inject, Injectable};
 pub use error::FrameworkError;
 pub use handler::RouteDescriptor;
-pub use response::Response;
+pub use middleware::{CorsConfig, CorsConfigBuilder};
+pub use response::Http;
 
 // Re-export proc-macros so users import everything from `ravix`.
 pub use ravix_macros::controller;
@@ -38,14 +39,19 @@ pub use ravix_macros::put;
 // Re-export inventory so the macro-generated `::ravix::inventory::submit!` works.
 pub use inventory;
 
-// Re-export frequently used axum types.
+// Re-export frequently used axum types with cleaner names.
 pub use axum::{
-    extract::{Json as JsonBody, Path, Query, State},
-    http::StatusCode,
+    body::Body,
+    extract::{Path, Query, State},
+    http::{Request, StatusCode},
     middleware::from_fn as middleware_fn,
+    middleware::Next,
     response::IntoResponse,
-    response::Response as AxumResponse,
+    response::Response,
 };
+
+/// JSON body extractor from axum.
+pub use axum::extract::Json;
 
 /// Convenience prelude — glob-import this to use all HTTP method macros,
 /// DI attributes, and common types without the `ravix::` prefix.
@@ -54,7 +60,10 @@ pub use axum::{
 /// use ravix::prelude::*;
 /// ```
 pub mod prelude {
-    pub use crate::response::Response;
+    pub use crate::response::Http;
     pub use crate::{controller, delete, get, injectable, middleware, patch, post, put};
-    pub use crate::{Container, ContainerRef, Inject, Injectable};
+    pub use crate::{
+        Body, IntoResponse, Json, Next, Path, Query, Request, Response, State, StatusCode,
+    };
+    pub use crate::{Container, ContainerRef, CorsConfig, CorsConfigBuilder, Inject, Injectable};
 }

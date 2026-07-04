@@ -1,8 +1,9 @@
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 use tokio::net::TcpListener;
 
-use crate::{container::ContainerRef, router::RouterBuilder};
+use crate::{container::ContainerRef, middleware::CorsConfig, router::RouterBuilder};
 
 /// Top-level application builder.
 ///
@@ -21,11 +22,15 @@ use crate::{container::ContainerRef, router::RouterBuilder};
 /// ```
 pub struct App {
     container: Option<ContainerRef>,
+    cors: Option<Arc<CorsConfig>>,
 }
 
 impl App {
     pub fn new() -> Self {
-        Self { container: None }
+        Self {
+            container: None,
+            cors: None,
+        }
     }
 
     /// Wrap a [`Container`] in an `Arc` and attach it to the application.
@@ -40,14 +45,40 @@ impl App {
         self
     }
 
+    /// Configure CORS middleware for the application.
+    ///
+    /// This is optional. If not called, no CORS middleware will be applied.
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use ravix::{App, Container, CorsConfig};
+    /// # #[tokio::main]
+    /// # async fn main() {
+    /// let cors = CorsConfig::builder()
+    ///     .allow_origins(vec!["http://localhost:3000".to_string()])
+    ///     .allow_methods(vec!["GET".to_string(), "POST".to_string()])
+    ///     .build();
+    /// let mut container = Container::new();
+    /// App::new()
+    ///     .container(container)
+    ///     .cors(cors)
+    ///     .run("0.0.0.0:3000")
+    ///     .await;
+    /// # }
+    /// ```
+    pub fn cors(mut self, cors: CorsConfig) -> Self {
+        self.cors = Some(Arc::new(cors));
+        self
+    }
+
     /// Build the `axum::Router` without starting a server.
     ///
     /// Useful for integration testing with `tower::ServiceExt::oneshot`.
     pub fn build(self) -> axum::Router {
-        let container = self.container.expect(
-            "[ravix] No container set. Call App::new().container(c) before build().",
-        );
-        RouterBuilder::build(container)
+        let container = self
+            .container
+            .expect("[ravix] No container set. Call App::new().container(c) before build().");
+        RouterBuilder::build_with_cors(container, self.cors)
     }
 
     /// Start the HTTP server on `addr` (e.g. `"0.0.0.0:3000"`).
