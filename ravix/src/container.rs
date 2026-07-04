@@ -27,12 +27,14 @@ pub type ContainerRef = Arc<Container>;
 /// ```
 pub struct Container {
     singletons: HashMap<TypeId, Box<dyn Any + Send + Sync>>,
+    named_singletons: HashMap<(TypeId, &'static str), Box<dyn Any + Send + Sync>>,
 }
 
 impl Container {
     pub fn new() -> Self {
         Self {
             singletons: HashMap::new(),
+            named_singletons: HashMap::new(),
         }
     }
 
@@ -68,6 +70,108 @@ impl Container {
                     type_name::<T>()
                 )
             })
+    }
+
+    /// Check whether a binding exists for type key `T` without cloning.
+    ///
+    /// Prefer this over [`try_resolve`] when you only need existence, not the
+    /// value. Used internally by [`verify`] to avoid wasteful clones.
+    pub fn has_binding<T: 'static>(&self) -> bool {
+        self.singletons.contains_key(&TypeId::of::<T>())
+    }
+
+    /// Attempt to resolve type `T`. Returns `None` when no binding exists.
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use ravix::Container;
+    /// # use std::sync::Arc;
+    /// let c = Container::new();
+    /// let opt: Option<Arc<dyn std::any::Any + Send + Sync>> = c.try_resolve();
+    /// assert!(opt.is_none());
+    /// ```
+    pub fn try_resolve<T: Clone + Send + Sync + 'static>(&self) -> Option<T> {
+        let type_id = TypeId::of::<T>();
+        self.singletons
+            .get(&type_id)
+            .and_then(|boxed| boxed.downcast_ref::<T>().cloned())
+    }
+
+    /// Register a singleton value for type key `T` under a name.
+    ///
+    /// Multiple implementations of the same trait can be registered with
+    /// different names and resolved later with [`Container::resolve_named`].
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use ravix::Container;
+    /// # use std::sync::Arc;
+    /// # trait Cache: Send + Sync {}
+    /// # struct RedisCache;
+    /// # impl Cache for RedisCache {}
+    /// # struct MemoryCache;
+    /// # impl Cache for MemoryCache {}
+    /// let mut c = Container::new();
+    /// c.register_named::<Arc<dyn Cache>>("redis", Arc::new(RedisCache));
+    /// c.register_named::<Arc<dyn Cache>>("memory", Arc::new(MemoryCache));
+    /// ```
+    pub fn register_named<T: Clone + Send + Sync + 'static>(
+        &mut self,
+        name: &'static str,
+        instance: T,
+    ) {
+        self.named_singletons
+            .insert((TypeId::of::<T>(), name), Box::new(instance));
+    }
+
+    /// Resolve a named singleton for type key `T`.
+    ///
+    /// # Panics
+    /// Panics with a descriptive message when no named binding exists for `T`.
+    pub fn resolve_named<T: Clone + Send + Sync + 'static>(&self, name: &'static str) -> T {
+        let type_id = TypeId::of::<T>();
+        self.named_singletons
+            .get(&(type_id, name))
+            .unwrap_or_else(|| {
+                panic!(
+                    "[ravix] No named binding '{}' registered for `{}`.",
+                    name,
+                    type_name::<T>()
+                )
+            })
+            .downcast_ref::<T>()
+            .cloned()
+            .unwrap_or_else(|| {
+                panic!(
+                    "[ravix] Type mismatch resolving named '{}' for `{}`.",
+                    name,
+                    type_name::<T>()
+                )
+            })
+    }
+
+    /// Attempt to resolve a named singleton. Returns `None` when no binding
+    /// exists under the given name.
+    pub fn try_resolve_named<T: Clone + Send + Sync + 'static>(
+        &self,
+        name: &'static str,
+    ) -> Option<T> {
+        let type_id = TypeId::of::<T>();
+        self.named_singletons
+            .get(&(type_id, name))
+            .and_then(|boxed| boxed.downcast_ref::<T>().cloned())
+    }
+
+    /// Run all registered binding checks. Returns a list of missing-binding errors.
+    ///
+    /// Each `#[injectable]` type automatically submits a [`BindingCheck`] for
+    /// every required (non-optional) `#[inject]` field via `inventory`.  Call
+    /// this once after all registrations are done to catch missing bindings
+    /// at startup.
+    pub fn verify(&self) -> Vec<String> {
+        inventory::iter::<BindingCheck>()
+            .filter_map(|bc| (bc.check)(self).err())
+            .collect()
     }
 }
 
@@ -118,6 +222,24 @@ where
     }
 }
 
+// ---------------------------------------------------------------------------
+// Binding verification — submitted by #[injectable] for required fields
+// ---------------------------------------------------------------------------
+
+/// A verification check submitted by `#[injectable]` via inventory.
+pub struct BindingCheck {
+    /// Human-readable type name (for error messages).
+    pub type_name: &'static str,
+    /// Returns `Ok(())` if the type can be resolved, `Err(msg)` otherwise.
+    pub check: fn(&Container) -> Result<(), String>,
+}
+
+// SAFETY: fn pointers are always Send + Sync; `&'static str` is too.
+unsafe impl Send for BindingCheck {}
+unsafe impl Sync for BindingCheck {}
+
+inventory::collect!(BindingCheck);
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -155,5 +277,46 @@ mod tests {
     fn resolve_missing_panics() {
         let c = Container::new();
         let _: Arc<dyn Greeter> = c.resolve();
+    }
+
+    #[test]
+    fn try_resolve_returns_none_for_missing() {
+        let c = Container::new();
+        assert!(c.try_resolve::<Arc<dyn Greeter>>().is_none());
+    }
+
+    #[test]
+    fn try_resolve_returns_some_when_registered() {
+        let mut c = Container::new();
+        c.register(Arc::new(HelloGreeter) as Arc<dyn Greeter>);
+        assert!(c.try_resolve::<Arc<dyn Greeter>>().is_some());
+    }
+
+    #[test]
+    fn register_named_and_resolve() {
+        let mut c = Container::new();
+        c.register_named::<Arc<dyn Greeter>>("hello", Arc::new(HelloGreeter));
+        let g: Arc<dyn Greeter> = c.resolve_named("hello");
+        assert_eq!(g.greet(), "hello");
+    }
+
+    #[test]
+    fn try_resolve_named_returns_none_for_missing_name() {
+        let c = Container::new();
+        assert!(c.try_resolve_named::<Arc<dyn Greeter>>("bogus").is_none());
+    }
+
+    #[test]
+    fn try_resolve_named_returns_some_when_registered() {
+        let mut c = Container::new();
+        c.register_named::<Arc<dyn Greeter>>("hello", Arc::new(HelloGreeter));
+        assert!(c.try_resolve_named::<Arc<dyn Greeter>>("hello").is_some());
+    }
+
+    #[test]
+    fn verify_returns_empty_when_no_checks_registered() {
+        let c = Container::new();
+        let errors = c.verify();
+        assert!(errors.is_empty());
     }
 }

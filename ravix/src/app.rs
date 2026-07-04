@@ -74,10 +74,21 @@ impl App {
     /// Build the `axum::Router` without starting a server.
     ///
     /// Useful for integration testing with `tower::ServiceExt::oneshot`.
+    ///
+    /// # Panics
+    /// Panics if any required DI bindings are missing.  See
+    /// [`Container::verify`] for details.
     pub fn build(self) -> axum::Router {
         let container = self
             .container
             .expect("[ravix] No container set. Call App::new().container(c) before build().");
+        let errors = container.verify();
+        if !errors.is_empty() {
+            panic!(
+                "[ravix] Missing DI bindings:\n{}",
+                errors.join("\n")
+            );
+        }
         RouterBuilder::build_with_cors(container, self.cors)
     }
 

@@ -8,7 +8,7 @@ pub mod response;
 pub mod router;
 
 pub use app::App;
-pub use container::{Container, ContainerRef, Inject, Injectable};
+pub use container::{BindingCheck, Container, ContainerRef, Inject, Injectable};
 pub use error::FrameworkError;
 pub use handler::RouteDescriptor;
 pub use middleware::{CorsConfig, CorsConfigBuilder};
