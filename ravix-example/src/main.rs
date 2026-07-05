@@ -59,7 +59,7 @@ async fn main() {
     // ── Boot ──────────────────────────────────────────────────────────────────
     App::new()
         .container(container)
-        .cors(cors)         // omit this line to disable CORS entirely
+        .cors(cors) // omit this line to disable CORS entirely
         .run("0.0.0.0:3001")
         .await;
 }

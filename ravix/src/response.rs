@@ -47,11 +47,7 @@ impl Http {
 
     /// 403 Forbidden with a JSON error message.
     pub fn forbidden(message: &str) -> crate::Response {
-        (
-            StatusCode::FORBIDDEN,
-            AxumJson(json!({ "error": message })),
-        )
-            .into_response()
+        (StatusCode::FORBIDDEN, AxumJson(json!({ "error": message }))).into_response()
     }
 
     /// Alias for `unauthorized` to support different naming preferences.

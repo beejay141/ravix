@@ -3,7 +3,10 @@ use std::sync::Arc;
 
 use tokio::net::TcpListener;
 
-use crate::{container::ContainerRef, middleware::CorsConfig, middleware::MiddlewareChain, router::RouterBuilder};
+use crate::{
+    container::ContainerRef, middleware::CorsConfig, middleware::MiddlewareChain,
+    router::RouterBuilder,
+};
 
 /// Top-level application builder.
 ///
@@ -144,10 +147,7 @@ impl App {
             .expect("[ravix] No container set. Call App::new().container(c) before build().");
         let errors = container.verify();
         if !errors.is_empty() {
-            panic!(
-                "[ravix] Missing DI bindings:\n{}",
-                errors.join("\n")
-            );
+            panic!("[ravix] Missing DI bindings:\n{}", errors.join("\n"));
         }
         let router = RouterBuilder::build_with_cors(container, self.cors, self.base_path);
         match self.middleware {

@@ -11,8 +11,8 @@ pub use app::App;
 pub use container::{BindingCheck, Container, ContainerRef, Inject, Injectable};
 pub use error::FrameworkError;
 pub use handler::RouteDescriptor;
-pub use middleware::{CorsConfig, CorsConfigBuilder};
 pub use middleware::MiddlewareChain;
+pub use middleware::{CorsConfig, CorsConfigBuilder};
 pub use response::Http;
 
 // Re-export proc-macros so users import everything from `ravix`.
@@ -62,10 +62,10 @@ pub use axum::extract::Json;
 /// ```
 pub mod prelude {
     pub use crate::response::Http;
+    pub use crate::MiddlewareChain;
     pub use crate::{controller, delete, get, injectable, middleware, patch, post, put};
     pub use crate::{
         Body, IntoResponse, Json, Next, Path, Query, Request, Response, State, StatusCode,
     };
     pub use crate::{Container, ContainerRef, CorsConfig, CorsConfigBuilder, Inject, Injectable};
-    pub use crate::MiddlewareChain;
 }

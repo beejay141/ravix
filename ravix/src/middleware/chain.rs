@@ -21,7 +21,7 @@ use tower::Service;
 /// use tower_http::trace::TraceLayer;
 ///
 /// let chain = MiddlewareChain::new()
-///     .add(TraceLayer::new_for_http());
+///     .add_layer(TraceLayer::new_for_http());
 /// ```
 pub struct MiddlewareChain {
     layers: Vec<Box<dyn Fn(Router) -> Router + Send + Sync>>,
@@ -78,9 +78,9 @@ impl MiddlewareChain {
     /// use tower_http::compression::CompressionLayer;
     ///
     /// let chain = MiddlewareChain::new()
-    ///     .add(CompressionLayer::new());
+    ///     .add_layer(CompressionLayer::new());
     /// ```
-    pub fn add<L>(mut self, layer: L) -> Self
+    pub fn add_layer<L>(mut self, layer: L) -> Self
     where
         L: Layer<Route> + Clone + Send + Sync + 'static,
         L::Service: Service<Request<Body>> + Clone + Send + 'static,
