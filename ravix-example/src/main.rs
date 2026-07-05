@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
 use ravix::{App, Container, CorsConfig, Injectable};
+use ravix_apm::{apm_middleware, config as apm_config, Apm};
+use ravix::MiddlewareChain;
 
 mod controllers;
 mod middleware;
@@ -14,6 +16,18 @@ use services::UserService;
 
 #[tokio::main]
 async fn main() {
+    // ── APM ─────────────────────────────────────────────────────────────────
+    Apm::configure(
+        apm_config()
+            .service_name("ravix-example")
+            .service_version("0.1.0")
+            .environment("development")
+            .log_path("apm.ndjson")
+            .correlation_id_header("X-Correlation-ID")
+            .build(),
+    )
+    .await;
+
     let mut container = Container::new();
 
     // ── DAL layer ─────────────────────────────────────────────────────────────
@@ -56,10 +70,14 @@ async fn main() {
         .max_age(3600)
         .build();
 
+    // ── Middleware ────────────────────────────────────────────────────────────
+    let middleware = MiddlewareChain::new().chain(apm_middleware);
+
     // ── Boot ──────────────────────────────────────────────────────────────────
     App::new()
         .container(container)
         .cors(cors) // omit this line to disable CORS entirely
+        .middleware(middleware)
         .run("0.0.0.0:3001")
         .await;
 }

@@ -1,3 +1,3 @@
 [workspace]
-members = ["ravix", "ravix-macros", "ravix-example"]
+ members = ["ravix", "ravix-macros", "ravix-example", "ravix-apm"]
 resolver = "2"

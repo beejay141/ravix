@@ -3,6 +3,7 @@ use uuid::Uuid;
 
 use crate::models::{CreateUserDto, User};
 use crate::repositories::UserRepository;
+use ravix_apm::Apm;
 
 /// Business-logic layer. The `repo` field is resolved from the DI container via `#[inject]`.
 #[ravix::injectable]
@@ -13,7 +14,7 @@ pub struct UserService {
 
 impl UserService {
     pub async fn find_all(&self) -> Vec<User> {
-        self.repo.find_all().await
+        Apm::wrap_span_future("find_all_users", "db", None, self.repo.find_all()).await
     }
 
     pub async fn find_by_id(&self, id: Uuid) -> Option<User> {
