@@ -593,10 +593,24 @@ dependencies = [
  "http-body-util",
  "ravix",
  "ravix-apm",
+ "ravix-logger",
  "serde",
  "serde_json",
  "tokio",
  "tower 0.4.13",
+ "uuid",
+]
+
+[[package]]
+name = "ravix-logger"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "log",
+ "serde",
+ "serde_json",
+ "tokio",
  "uuid",
 ]
 

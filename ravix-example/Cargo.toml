@@ -10,6 +10,7 @@ path = "src/main.rs"
 [dependencies]
 ravix = { path = "../ravix" }
 ravix-apm = { path = "../ravix-apm" }
+ravix-logger = { path = "../ravix-logger" }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
