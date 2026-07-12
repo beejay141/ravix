@@ -1,0 +1,15 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="630" fill="#0d1117"/>
+  <rect x="60" y="60" width="80" height="80" rx="16" fill="#e05a00"/>
+  <path d="M80 80H120C140 80 152 92 152 112C152 132 140 144 120 144H80V200" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M120 100H140C148 100 148 120 136 128C124 136 104 136 104 136" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="152" cy="170" r="8" fill="white"/>
+  <text x="160" y="110" font-family="Inter, system-ui, sans-serif" font-size="48" font-weight="700" fill="#fff">Ravix</text>
+  <text x="160" y="150" font-family="Inter, system-ui, sans-serif" font-size="24" fill="#888">Build Modern Rust APIs</text>
+  <text x="60" y="280" font-family="JetBrains Mono, monospace" font-size="20" fill="#e05a00">#[controller("/users")]</text>
+  <text x="60" y="310" font-family="JetBrains Mono, monospace" font-size="20" fill="#fff">impl UserController {</text>
+  <text x="100" y="340" font-family="JetBrains Mono, monospace" font-size="20" fill="#ff7b2a">#[get("/")]</text>
+  <text x="140" y="370" font-family="JetBrains Mono, monospace" font-size="20" fill="#fff">async fn list(&self) -> Response {</text>
+  <text x="180" y="400" font-family="JetBrains Mono, monospace" font-size="20" fill="#888">Http::json(self.svc.list().await)</text>
+  <text x="60" y="450" font-family="Inter, system-ui, sans-serif" font-size="18" fill="#666">Clean Architecture • Dependency Injection • Observability</text>
+</svg>

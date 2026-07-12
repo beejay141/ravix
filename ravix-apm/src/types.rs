@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 pub type Metadata = HashMap<String, serde_json::Value>;
 
-#[derive(Debug, Clone, Serialize, Default)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct ServiceContext {
     pub service_name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -16,6 +16,8 @@ pub struct ServiceContext {
     pub environment: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub server_name: Option<String>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub context: Metadata,
 }
 
 // ── Serialize helpers for Arc-wrapped types ────────────────────────────────

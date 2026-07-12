@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use crate::adapter::{DefaultJsonAdapter, LogAdapter};
@@ -39,6 +40,7 @@ impl LoggerConfigBuilder {
                 service_version: None,
                 environment: None,
                 server_name: None,
+                context: HashMap::new(),
             },
             min_level: LogLevel::Info,
             classifications: Vec::new(),
@@ -65,6 +67,13 @@ impl LoggerConfigBuilder {
 
     pub fn server_name(mut self, name: impl Into<String>) -> Self {
         self.service.server_name = Some(name.into());
+        self
+    }
+
+    /// Add custom key-value context to the service context.
+    /// This context will be included in all log entries.
+    pub fn context(mut self, key: impl Into<String>, value: impl Into<serde_json::Value>) -> Self {
+        self.service.context.insert(key.into(), value.into());
         self
     }
 

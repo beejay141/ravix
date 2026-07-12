@@ -1,6 +1,6 @@
 # Ravix
 
-A modern Rust API framework built on [axum](https://github.com/tokio-rs/axum) with clean-architecture patterns, proc-macro route registration, and InversifyJS-style dependency injection.
+A modern Rust API framework built on [axum](https://github.com/tokio-rs/axum) with clean-architecture patterns, proc-macro route registration, and dependency injection.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/rust-2021%20edition-blue.svg)](https://www.rust-lang.org)
@@ -9,7 +9,7 @@ A modern Rust API framework built on [axum](https://github.com/tokio-rs/axum) wi
 
 - **Clean Architecture**: Controller → Service → Repository layers with clear separation of concerns
 - **Proc-macro Routing**: Declarative route registration with `#[controller]` and HTTP method attributes
-- **Dependency Injection**: InversifyJS-inspired DI container with `#[injectable]` and `#[inject]` attributes
+- **Dependency Injection**: DI container with `#[injectable]` and `#[inject]` attributes
 - **Per-handler Middleware**: Attach middleware to individual handlers with `#[middleware]` attribute
 - **Optional Global Middleware**: Register CORS and other security middleware at the `App` level — each feature is opt-in
 - **Axum Abstraction**: Clean type aliases for common axum types (no direct `axum::` imports needed)

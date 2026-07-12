@@ -1,0 +1,10 @@
+<svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background with lighter Ravix orange for dark mode -->
+  <rect width="40" height="40" rx="8" fill="#ff7b2a"/>
+  
+  <!-- Rust bolt symbol -->
+  <path d="M20 8L24 16H30L25 22L28 30L20 25L12 30L15 22L10 16H16L20 8Z" fill="white"/>
+  
+  <!-- API indicator - small circle for network -->
+  <circle cx="28" cy="12" r="3" fill="#fff0e6"/>
+</svg>

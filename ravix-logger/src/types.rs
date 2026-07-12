@@ -6,7 +6,7 @@ use serde::{Serialize, Serializer};
 
 pub type Metadata = HashMap<String, serde_json::Value>;
 
-#[derive(Debug, Clone, Serialize, Default)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct ServiceContext {
     pub service_name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -15,6 +15,8 @@ pub struct ServiceContext {
     pub environment: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub server_name: Option<String>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub context: Metadata,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -51,10 +53,7 @@ fn serialize_arc_service_context<S: Serializer>(
     x.as_ref().serialize(s)
 }
 
-fn serialize_opt_arc_str<S: Serializer>(
-    x: &Option<Arc<str>>,
-    s: S,
-) -> Result<S::Ok, S::Error> {
+fn serialize_opt_arc_str<S: Serializer>(x: &Option<Arc<str>>, s: S) -> Result<S::Ok, S::Error> {
     match x {
         Some(v) => serialize_arc_str(v, s),
         None => s.serialize_none(),
