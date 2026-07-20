@@ -117,3 +117,39 @@ impl Default for MiddlewareChain {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::response::IntoResponse;
+
+    async fn dummy_mw(_req: Request, _next: Next) -> Response {
+        axum::http::StatusCode::OK.into_response()
+    }
+
+    #[test]
+    fn chain_adds_middleware() {
+        let chain = MiddlewareChain::new().chain(dummy_mw);
+        assert_eq!(chain.layers.len(), 1);
+    }
+
+    #[test]
+    fn chain_multiple_middleware() {
+        let chain = MiddlewareChain::new().chain(dummy_mw).chain(dummy_mw);
+        assert_eq!(chain.layers.len(), 2);
+    }
+
+    #[test]
+    fn default_chain_is_empty() {
+        let chain = MiddlewareChain::default();
+        assert!(chain.layers.is_empty());
+    }
+
+    #[tokio::test]
+    async fn apply_with_empty_chain_returns_router() {
+        let chain = MiddlewareChain::new();
+        let router = chain.apply(Router::new());
+        // Just verify it doesn't panic
+        let _ = router;
+    }
+}

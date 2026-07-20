@@ -319,4 +319,51 @@ mod tests {
         let errors = c.verify();
         assert!(errors.is_empty());
     }
+
+    #[test]
+    fn has_binding_returns_true_when_registered() {
+        let mut c = Container::new();
+        c.register(Arc::new(HelloGreeter) as Arc<dyn Greeter>);
+        assert!(c.has_binding::<Arc<dyn Greeter>>());
+    }
+
+    #[test]
+    fn has_binding_returns_false_when_missing() {
+        let c = Container::new();
+        assert!(!c.has_binding::<Arc<dyn Greeter>>());
+    }
+
+    #[test]
+    #[should_panic(expected = "No named binding")]
+    fn resolve_named_missing_panics() {
+        let c = Container::new();
+        let _: Arc<dyn Greeter> = c.resolve_named("missing");
+    }
+
+    #[test]
+    #[should_panic(expected = "Type mismatch resolving named")]
+    fn resolve_named_type_mismatch_panics() {
+        let mut c = Container::new();
+        c.register_named::<i32>("num", 42_i32);
+        let _: Arc<dyn Greeter> = c.resolve_named("num");
+    }
+
+    #[test]
+    fn try_resolve_named_missing_returns_none() {
+        let c = Container::new();
+        assert!(c.try_resolve_named::<Arc<dyn Greeter>>("missing").is_none());
+    }
+
+    #[test]
+    fn try_resolve_named_type_mismatch_returns_none() {
+        let mut c = Container::new();
+        c.register_named::<i32>("num", 42_i32);
+        assert!(c.try_resolve_named::<Arc<dyn Greeter>>("num").is_none());
+    }
+
+    #[test]
+    fn default_container_is_empty() {
+        let c = Container::default();
+        assert!(c.try_resolve::<Arc<dyn Greeter>>().is_none());
+    }
 }

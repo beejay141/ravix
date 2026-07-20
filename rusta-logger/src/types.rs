@@ -95,3 +95,127 @@ pub struct LogOptions {
     /// Extra structured fields merged into `LogEntry.context`.
     pub context: Option<Metadata>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json;
+
+    #[test]
+    fn log_level_display() {
+        assert_eq!(LogLevel::Trace.to_string(), "TRACE");
+        assert_eq!(LogLevel::Debug.to_string(), "DEBUG");
+        assert_eq!(LogLevel::Info.to_string(), "INFO");
+        assert_eq!(LogLevel::Warn.to_string(), "WARN");
+        assert_eq!(LogLevel::Error.to_string(), "ERROR");
+    }
+
+    #[test]
+    fn log_level_ord_and_partial_ord() {
+        assert!(LogLevel::Trace < LogLevel::Debug);
+        assert!(LogLevel::Debug < LogLevel::Info);
+        assert!(LogLevel::Info < LogLevel::Warn);
+        assert!(LogLevel::Warn < LogLevel::Error);
+    }
+
+    #[test]
+    fn service_context_serialize_minimal() {
+        let ctx = ServiceContext {
+            service_name: "test-service".to_string(),
+            service_version: None,
+            environment: None,
+            server_name: None,
+            context: HashMap::new(),
+        };
+        let json = serde_json::to_string(&ctx).unwrap();
+        assert!(json.contains("test-service"));
+        assert!(!json.contains("service_version"));
+        assert!(!json.contains("environment"));
+    }
+
+    #[test]
+    fn service_context_serialize_with_optional_fields() {
+        let mut ctx = ServiceContext {
+            service_name: "api".to_string(),
+            service_version: Some("2.0.0".to_string()),
+            environment: Some("production".to_string()),
+            server_name: Some("server-1".to_string()),
+            context: HashMap::new(),
+        };
+        ctx.context.insert("region".to_string(), serde_json::json!("us-east-1"));
+        let json = serde_json::to_string(&ctx).unwrap();
+        assert!(json.contains("api"));
+        assert!(json.contains("2.0.0"));
+        assert!(json.contains("production"));
+        assert!(json.contains("server-1"));
+        assert!(json.contains("us-east-1"));
+    }
+
+    #[test]
+    fn log_entry_serialize_with_correlation_id() {
+        let entry = LogEntry {
+            timestamp: DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z")
+                .unwrap()
+                .with_timezone(&Utc),
+            level: LogLevel::Info,
+            message: "test message".to_string(),
+            classification: Arc::from("PUBLIC"),
+            correlation_id: Some(Arc::from("corr-123")),
+            service: Arc::new(ServiceContext {
+                service_name: "svc".to_string(),
+                ..Default::default()
+            }),
+            context: HashMap::new(),
+        };
+        let json = serde_json::to_string(&entry).unwrap();
+        assert!(json.contains("test message"));
+        assert!(json.contains("PUBLIC"));
+        assert!(json.contains("corr-123"));
+    }
+
+    #[test]
+    fn log_entry_serialize_without_correlation_id() {
+        let entry = LogEntry {
+            timestamp: DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z")
+                .unwrap()
+                .with_timezone(&Utc),
+            level: LogLevel::Error,
+            message: "error occurred".to_string(),
+            classification: Arc::from("PRIVATE"),
+            correlation_id: None,
+            service: Arc::new(ServiceContext {
+                service_name: "svc".to_string(),
+                ..Default::default()
+            }),
+            context: HashMap::new(),
+        };
+        let json = serde_json::to_string(&entry).unwrap();
+        assert!(json.contains("error occurred"));
+        assert!(json.contains("PRIVATE"));
+    }
+
+    #[test]
+    fn log_entry_serialize_with_context() {
+        let mut ctx = HashMap::new();
+        ctx.insert("user_id".to_string(), serde_json::json!("user-42"));
+        ctx.insert("duration_ms".to_string(), serde_json::json!(150));
+
+        let entry = LogEntry {
+            timestamp: DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z")
+                .unwrap()
+                .with_timezone(&Utc),
+            level: LogLevel::Debug,
+            message: "debug info".to_string(),
+            classification: Arc::from("PUBLIC"),
+            correlation_id: None,
+            service: Arc::new(ServiceContext {
+                service_name: "svc".to_string(),
+                ..Default::default()
+            }),
+            context: ctx,
+        };
+        let json = serde_json::to_string(&entry).unwrap();
+        assert!(json.contains("user-42"));
+        assert!(json.contains("150"));
+    }
+}

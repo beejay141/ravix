@@ -41,3 +41,118 @@ impl LogAdapter for DefaultJsonAdapter {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{LogLevel, ServiceContext};
+    use chrono::{DateTime, Utc};
+    use serde_json;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    #[test]
+    fn default_json_adapter_format_basic() {
+        let entry = LogEntry {
+            timestamp: DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z")
+                .unwrap()
+                .with_timezone(&Utc),
+            level: LogLevel::Info,
+            message: "test message".to_string(),
+            classification: Arc::from("PUBLIC"),
+            correlation_id: None,
+            service: Arc::new(ServiceContext {
+                service_name: "svc".to_string(),
+                ..Default::default()
+            }),
+            context: HashMap::new(),
+        };
+
+        let adapter = DefaultJsonAdapter;
+        let json = adapter.format(&entry);
+
+        // Verify it's valid JSON
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["message"], "test message");
+        // LogLevel serializes as the variant name ("Info"), not the Display format ("INFO")
+        assert_eq!(parsed["level"], "Info");
+        assert_eq!(parsed["classification"], "PUBLIC");
+    }
+
+    #[test]
+    fn default_json_adapter_format_with_correlation_id() {
+        let entry = LogEntry {
+            timestamp: DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z")
+                .unwrap()
+                .with_timezone(&Utc),
+            level: LogLevel::Error,
+            message: "error with corr".to_string(),
+            classification: Arc::from("PRIVATE"),
+            correlation_id: Some(Arc::from("corr-abc-123")),
+            service: Arc::new(ServiceContext {
+                service_name: "svc".to_string(),
+                ..Default::default()
+            }),
+            context: HashMap::new(),
+        };
+
+        let adapter = DefaultJsonAdapter;
+        let json = adapter.format(&entry);
+
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["correlation_id"], "corr-abc-123");
+        assert_eq!(parsed["classification"], "PRIVATE");
+    }
+
+    #[test]
+    fn default_json_adapter_format_with_context() {
+        let mut ctx = HashMap::new();
+        ctx.insert("key1".to_string(), serde_json::json!("value1"));
+        ctx.insert("key2".to_string(), serde_json::json!(42));
+
+        let entry = LogEntry {
+            timestamp: DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z")
+                .unwrap()
+                .with_timezone(&Utc),
+            level: LogLevel::Debug,
+            message: "context test".to_string(),
+            classification: Arc::from("PUBLIC"),
+            correlation_id: None,
+            service: Arc::new(ServiceContext {
+                service_name: "svc".to_string(),
+                ..Default::default()
+            }),
+            context: ctx,
+        };
+
+        let adapter = DefaultJsonAdapter;
+        let json = adapter.format(&entry);
+
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["context"]["key1"], "value1");
+        assert_eq!(parsed["context"]["key2"], 42);
+    }
+
+    #[test]
+    fn default_json_adapter_no_trailing_newline() {
+        let entry = LogEntry {
+            timestamp: DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z")
+                .unwrap()
+                .with_timezone(&Utc),
+            level: LogLevel::Info,
+            message: "no newline".to_string(),
+            classification: Arc::from("PUBLIC"),
+            correlation_id: None,
+            service: Arc::new(ServiceContext {
+                service_name: "svc".to_string(),
+                ..Default::default()
+            }),
+            context: HashMap::new(),
+        };
+
+        let adapter = DefaultJsonAdapter;
+        let json = adapter.format(&entry);
+
+        assert!(!json.ends_with('\n'));
+    }
+}

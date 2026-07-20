@@ -131,3 +131,34 @@ async fn writer_loop(mut file: fs::File, mut receiver: Receiver<String>) {
     // Final flush on channel close — drain any remaining lines.
     let _ = file.flush().await;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn log_writer_handle_new_creates_file() {
+        let temp = tempfile::NamedTempFile::new().unwrap();
+        let handle = LogWriterHandle::new(temp.path(), None).await.unwrap();
+
+        drop(handle);
+    }
+
+    #[tokio::test]
+    async fn log_writer_handle_writer_is_clone() {
+        let temp = tempfile::NamedTempFile::new().unwrap();
+        let handle = LogWriterHandle::new(temp.path(), None).await.unwrap();
+        let writer = handle.writer();
+        let _clone = writer.clone();
+
+        drop(handle);
+    }
+
+    #[tokio::test]
+    async fn log_writer_handle_custom_capacity() {
+        let temp = tempfile::NamedTempFile::new().unwrap();
+        let handle = LogWriterHandle::new(temp.path(), Some(100)).await.unwrap();
+
+        drop(handle);
+    }
+}

@@ -1,6 +1,8 @@
 mod auth_controller;
 mod comment_controller;
 mod post_controller;
+#[cfg(test)]
+mod tests;
 
 use rusta::{Container, Injectable};
 

@@ -17,7 +17,10 @@ use rusta_di::ContainerRef;
 ///     // ... register services ...
 ///     App::new()
 ///         .container(container)
-///         .run("0.0.0.0:3000")
+///         .run("0.0.0.0:3000", |res| match res {
+///             Ok(addr) => println!("Listening on {}", addr),
+///             Err(msg) => eprintln!("Startup error: {}", msg),
+///         })
 ///         .await;
 /// }
 /// ```
@@ -67,7 +70,10 @@ impl App {
     /// App::new()
     ///     .container(container)
     ///     .cors(cors)
-    ///     .run("0.0.0.0:3000")
+    ///     .run("0.0.0.0:3000", |res| match res {
+    ///         Ok(addr) => println!("Listening on {}", addr),
+    ///         Err(msg) => eprintln!("Startup error: {}", msg),
+    ///     })
     ///     .await;
     /// # }
     /// ```
@@ -101,7 +107,10 @@ impl App {
     /// App::new()
     ///     .container(container)
     ///     .middleware(chain)
-    ///     .run("0.0.0.0:3000")
+    ///     .run("0.0.0.0:3000", |res| match res {
+    ///         Ok(addr) => println!("Listening on {}", addr),
+    ///         Err(msg) => eprintln!("Startup error: {}", msg),
+    ///     })
     ///     .await;
     /// # }
     /// ```
@@ -123,7 +132,10 @@ impl App {
     /// App::new()
     ///     .container(container)
     ///     .base_path("/my_service/v1")
-    ///     .run("0.0.0.0:3000")
+    ///     .run("0.0.0.0:3000", |res| match res {
+    ///         Ok(addr) => println!("Listening on {}", addr),
+    ///         Err(msg) => eprintln!("Startup error: {}", msg),
+    ///     })
     ///     .await;
     /// # }
     /// ```
@@ -155,23 +167,122 @@ impl App {
     }
 
     /// Start the HTTP server on `addr` (e.g. `"0.0.0.0:3000"`).
-    pub async fn run(self, addr: &str) {
+    ///
+    /// The `result_cb` closure will be invoked with `Ok(addr)` once the
+    /// server has successfully bound and begun listening, or with `Err(msg)`
+    /// when parsing/binding/serving fails. The closure is called in all
+    /// failure cases and on successful start.
+    pub async fn run<F>(self, addr: &str, result_cb: F)
+    where
+        F: Fn(Result<SocketAddr, String>) + Send + Sync + 'static,
+    {
+        // wrap user-provided closure in Arc so we can call it multiple times
+        let result_cb = Arc::new(result_cb);
+
         let router = self.build();
-        let addr: SocketAddr = addr
-            .parse()
-            .unwrap_or_else(|_| panic!("[rusta] Invalid socket address: {}", addr));
-        let listener = TcpListener::bind(addr)
-            .await
-            .unwrap_or_else(|e| panic!("[rusta] Cannot bind to {}: {}", addr, e));
+
+        let addr: SocketAddr = match addr.parse() {
+            Ok(a) => a,
+            Err(e) => {
+                let msg = format!("Invalid socket address: {}", e);
+                (result_cb)(Err(msg.clone()));
+                panic!("[rusta] Invalid socket address: {}", addr);
+            }
+        };
+
+        let listener = match TcpListener::bind(addr).await {
+            Ok(l) => l,
+            Err(e) => {
+                let msg = format!("Cannot bind to {}: {}", addr, e);
+                (result_cb)(Err(msg.clone()));
+                panic!("[rusta] Cannot bind to {}: {}", addr, e);
+            }
+        };
+
         println!("[rusta] Listening on http://{}", addr);
-        axum::serve(listener, router)
-            .await
-            .unwrap_or_else(|e| panic!("[rusta] Server error: {}", e));
+        (result_cb)(Ok(addr));
+
+        if let Err(e) = axum::serve(listener, router).await {
+            let msg = format!("Server error: {}", e);
+            (result_cb)(Err(msg.clone()));
+            panic!("[rusta] Server error: {}", e);
+        }
     }
 }
 
 impl Default for App {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusta_di::Container;
+    use std::sync::Arc;
+
+    fn make_container() -> Container {
+        let mut c = Container::new();
+        c.register(Arc::new(42_i32));
+        c
+    }
+
+    #[test]
+    fn app_new_has_no_container() {
+        let app = App::new();
+        assert!(app.container.is_none());
+    }
+
+    #[test]
+    fn app_container_sets_container() {
+        let container = make_container();
+        let app = App::new().container(container);
+        assert!(app.container.is_some());
+    }
+
+    #[test]
+    fn app_container_ref_sets_container() {
+        let container = make_container();
+        let app = App::new().container_ref(Arc::new(container));
+        assert!(app.container.is_some());
+    }
+
+    #[test]
+    fn app_cors_sets_cors() {
+        let cors = crate::middleware::CorsConfig::builder()
+            .allow_origins(vec!["http://localhost".to_string()])
+            .build();
+        let app = App::new().cors(cors);
+        assert!(app.cors.is_some());
+    }
+
+    #[test]
+    fn app_middleware_sets_middleware() {
+        use crate::middleware::MiddlewareChain;
+        async fn dummy(_req: crate::Request, _next: crate::Next) -> crate::Response {
+            crate::Response::default()
+        }
+        let chain = MiddlewareChain::new().chain(dummy);
+        let app = App::new().middleware(chain);
+        assert!(app.middleware.is_some());
+    }
+
+    #[test]
+    fn app_base_path_sets_path() {
+        let app = App::new().base_path("/api/v1");
+        assert_eq!(app.base_path, Some("/api/v1".to_string()));
+    }
+
+    #[test]
+    fn app_build_panics_without_container() {
+        let result = std::panic::catch_unwind(|| App::new().build());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn app_build_succeeds_with_container() {
+        let container = make_container();
+        let _router = App::new().container(container).build();
     }
 }

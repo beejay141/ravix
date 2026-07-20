@@ -1,4 +1,5 @@
 pub mod config;
+pub mod controllers;
 pub mod db;
 pub mod errors;
 pub mod middleware;

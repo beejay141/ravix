@@ -29,7 +29,10 @@
 //! async fn main() {
 //!     let mut container = Container::new();
 //!     container.register(UserService::construct(&container));
-//!     App::new().container(container).run("0.0.0.0:3000").await;
+//!     App::new().container(container).run("0.0.0.0:3000", |res| match res {
+//!         Ok(addr) => println!("Started on {}", addr),
+//!         Err(msg) => eprintln!("Startup error: {}", msg),
+//!     }).await;
 //! }
 //! ```
 //!

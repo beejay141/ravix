@@ -31,3 +31,62 @@ pub async fn auth_guard(request: Request<Body>, next: Next) -> Response {
             .into_response()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::to_bytes;
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn auth_guard_allows_bearer_token() {
+        let router = axum::Router::new()
+            .route("/", axum::routing::get(|| async {}))
+            .layer(axum::middleware::from_fn(auth_guard));
+        let req = Request::builder()
+            .header("Authorization", "Bearer abc123")
+            .uri("/")
+            .body(Body::empty())
+            .unwrap();
+        let resp = router.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn auth_guard_rejects_missing_header() {
+        let router = axum::Router::new()
+            .route("/", axum::routing::get(|| async {}))
+            .layer(axum::middleware::from_fn(auth_guard));
+        let req = Request::builder().uri("/").body(Body::empty()).unwrap();
+        let resp = router.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn auth_guard_rejects_non_bearer() {
+        let router = axum::Router::new()
+            .route("/", axum::routing::get(|| async {}))
+            .layer(axum::middleware::from_fn(auth_guard));
+        let req = Request::builder()
+            .header("Authorization", "Basic abc123")
+            .uri("/")
+            .body(Body::empty())
+            .unwrap();
+        let resp = router.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn auth_guard_rejects_malformed_bearer() {
+        let router = axum::Router::new()
+            .route("/", axum::routing::get(|| async {}))
+            .layer(axum::middleware::from_fn(auth_guard));
+        let req = Request::builder()
+            .header("Authorization", "Bearer")
+            .uri("/")
+            .body(Body::empty())
+            .unwrap();
+        let resp = router.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+}

@@ -50,3 +50,81 @@ impl ActiveTransaction {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn active_transaction_new_creates_unique_ids() {
+        let txn1 = ActiveTransaction::new("txn-1".to_string());
+        let txn2 = ActiveTransaction::new("txn-2".to_string());
+
+        assert_ne!(txn1.id, txn2.id);
+        assert_ne!(txn1.trace_id, txn2.trace_id);
+        assert_eq!(txn1.name, "txn-1");
+        assert_eq!(txn2.name, "txn-2");
+    }
+
+    #[test]
+    fn active_transaction_metadata_mutex() {
+        let txn = ActiveTransaction::new("test".to_string());
+
+        // Add metadata
+        {
+            let mut meta = txn.metadata.lock().unwrap();
+            meta.insert("key1".to_string(), serde_json::json!("value1"));
+        }
+
+        // Read metadata
+        {
+            let meta = txn.metadata.lock().unwrap();
+            assert_eq!(meta.get("key1"), Some(&serde_json::json!("value1")));
+        }
+    }
+
+    #[test]
+    fn active_transaction_correlation_id() {
+        let txn = ActiveTransaction::new("test".to_string());
+
+        // Initially None
+        {
+            let cid = txn.correlation_id.lock().unwrap();
+            assert!(cid.is_none());
+        }
+
+        // Set correlation ID
+        txn.set_correlation_id("corr-123".to_string());
+
+        // Verify it's set
+        {
+            let cid = txn.correlation_id.lock().unwrap();
+            assert_eq!(*cid, Some("corr-123".to_string()));
+        }
+    }
+
+    #[test]
+    fn active_transaction_metadata_extend() {
+        let txn = ActiveTransaction::new("test".to_string());
+
+        // Add initial metadata
+        {
+            let mut meta = txn.metadata.lock().unwrap();
+            meta.insert("key1".to_string(), serde_json::json!("value1"));
+        }
+
+        // Extend with more
+        {
+            let mut meta = txn.metadata.lock().unwrap();
+            meta.extend(vec![("key2".to_string(), serde_json::json!("value2"))].into_iter());
+        }
+
+        // Verify both
+        {
+            let meta = txn.metadata.lock().unwrap();
+            assert_eq!(meta.len(), 2);
+            assert_eq!(meta.get("key1"), Some(&serde_json::json!("value1")));
+            assert_eq!(meta.get("key2"), Some(&serde_json::json!("value2")));
+        }
+    }
+}

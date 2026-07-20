@@ -95,7 +95,10 @@ async fn main() {
         .container(container)
         .cors(cors)
         .middleware(middleware)
-        .run(&app_config.server_port)
+        .run(&app_config.server_port, |res| match res {
+            Ok(addr) => println!("Listening on {}", addr),
+            Err(msg) => eprintln!("Startup error: {}", msg),
+        })
         .await;
 
     Apm::shutdown().await;

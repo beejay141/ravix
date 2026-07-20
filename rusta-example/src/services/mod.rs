@@ -1,6 +1,8 @@
 pub mod auth_service;
 pub mod comment_service;
 pub mod post_service;
+#[cfg(test)]
+mod tests;
 
 pub use auth_service::AuthService;
 pub use comment_service::CommentService;

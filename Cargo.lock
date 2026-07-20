@@ -2460,6 +2460,7 @@ dependencies = [
  "rusta-di",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "uuid",
 ]
@@ -2526,6 +2527,7 @@ dependencies = [
  "rusta-di",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "uuid",
 ]

@@ -112,3 +112,62 @@ impl IntoResponse for FrameworkError {
         (status, Json(error_response.into_json())).into_response()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::to_bytes;
+
+    #[test]
+    fn errorresponse_message_and_object_conversion() {
+        let m = ErrorResponse::message("oops");
+        assert_eq!(m.into_json()["error"], "oops");
+
+        let v = serde_json::json!({ "code": "X", "msg": "bad" });
+        let o = ErrorResponse::object(v.clone());
+        assert_eq!(o.into_json(), v);
+    }
+
+    #[tokio::test]
+    async fn framework_error_into_response_status_and_body() {
+        let fe = FrameworkError::RoutingError("not found".into());
+        let resp = fe.into_response();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+        let bytes = to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["error"], "not found");
+    }
+
+    #[tokio::test]
+    async fn framework_error_injection_error_returns_500() {
+        let fe = FrameworkError::InjectionError("di failed".into());
+        let resp = fe.into_response();
+        assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let bytes = to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["error"], "di failed");
+    }
+
+    #[tokio::test]
+    async fn framework_error_middleware_error_returns_500() {
+        let fe = FrameworkError::MiddlewareError("mw failed".into());
+        let resp = fe.into_response();
+        assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let bytes = to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["error"], "mw failed");
+    }
+
+    #[test]
+    fn error_response_from_string() {
+        let e: ErrorResponse = "simple".into();
+        assert_eq!(e.into_json()["error"], "simple");
+    }
+
+    #[test]
+    fn error_response_from_json_value() {
+        let v = serde_json::json!({ "a": 1 });
+        let e: ErrorResponse = v.clone().into();
+        assert_eq!(e.into_json(), v);
+    }
+}

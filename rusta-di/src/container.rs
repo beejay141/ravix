@@ -248,18 +248,160 @@ mod tests {
         fn greet(&self) -> &'static str;
     }
 
+    struct EnglishGreeter;
+    impl Greeter for EnglishGreeter {
+        fn greet(&self) -> &'static str {
+            "Hello"
+        }
+    }
+
     #[test]
     fn test_register_and_resolve() {
-        struct EnglishGreeter;
-        impl Greeter for EnglishGreeter {
-            fn greet(&self) -> &'static str {
-                "Hello"
-            }
-        }
-
         let mut c = Container::new();
         c.register(Arc::new(EnglishGreeter) as Arc<dyn Greeter>);
         let g = c.resolve::<Arc<dyn Greeter>>();
         assert_eq!(g.greet(), "Hello");
+    }
+
+    #[test]
+    fn test_has_binding_returns_true_when_registered() {
+        let mut c = Container::new();
+        c.register(Arc::new(EnglishGreeter) as Arc<dyn Greeter>);
+        assert!(c.has_binding::<Arc<dyn Greeter>>());
+    }
+
+    #[test]
+    fn test_has_binding_returns_false_when_missing() {
+        let c = Container::new();
+        assert!(!c.has_binding::<Arc<dyn Greeter>>());
+    }
+
+    #[test]
+    fn test_try_resolve_returns_some_when_registered() {
+        let mut c = Container::new();
+        c.register(Arc::new(EnglishGreeter) as Arc<dyn Greeter>);
+        assert!(c.try_resolve::<Arc<dyn Greeter>>().is_some());
+    }
+
+    #[test]
+    fn test_try_resolve_returns_none_when_missing() {
+        let c = Container::new();
+        assert!(c.try_resolve::<Arc<dyn Greeter>>().is_none());
+    }
+
+    #[test]
+    fn test_register_named_and_resolve_named() {
+        let mut c = Container::new();
+        c.register_named::<Arc<dyn Greeter>>("english", Arc::new(EnglishGreeter));
+        let g = c.resolve_named::<Arc<dyn Greeter>>("english");
+        assert_eq!(g.greet(), "Hello");
+    }
+
+    #[test]
+    fn test_try_resolve_named_returns_some_when_registered() {
+        let mut c = Container::new();
+        c.register_named::<Arc<dyn Greeter>>("english", Arc::new(EnglishGreeter));
+        assert!(c.try_resolve_named::<Arc<dyn Greeter>>("english").is_some());
+    }
+
+    #[test]
+    fn test_try_resolve_named_returns_none_when_missing() {
+        let c = Container::new();
+        assert!(c.try_resolve_named::<Arc<dyn Greeter>>("missing").is_none());
+    }
+
+    #[test]
+    fn test_default_container_is_empty() {
+        let c = Container::default();
+        assert!(c.try_resolve::<Arc<dyn Greeter>>().is_none());
+    }
+
+    #[test]
+    fn test_verify_returns_empty_when_no_checks() {
+        let c = Container::new();
+        let errors = c.verify();
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    #[should_panic(expected = "No binding registered")]
+    fn test_resolve_panics_when_missing() {
+        let c = Container::new();
+        c.resolve::<Arc<dyn Greeter>>();
+    }
+
+    #[test]
+    #[should_panic(expected = "No named binding")]
+    fn test_resolve_named_panics_when_missing() {
+        let c = Container::new();
+        c.resolve_named::<Arc<dyn Greeter>>("missing");
+    }
+
+    #[test]
+    fn test_multiple_registrations_same_type_overwrites() {
+        let mut c = Container::new();
+        
+        // Register first greeter
+        c.register(Arc::new(EnglishGreeter) as Arc<dyn Greeter>);
+        assert_eq!(c.resolve::<Arc<dyn Greeter>>().greet(), "Hello");
+
+        // Overwrite with same concrete type
+        c.register(Arc::new(EnglishGreeter) as Arc<dyn Greeter>);
+        assert_eq!(c.resolve::<Arc<dyn Greeter>>().greet(), "Hello");
+    }
+
+    #[test]
+    fn test_multiple_named_registrations_same_type() {
+        let mut c = Container::new();
+        
+        // Register multiple implementations under different names
+        c.register_named::<Arc<dyn Greeter>>("first", Arc::new(EnglishGreeter));
+        c.register_named::<Arc<dyn Greeter>>("second", Arc::new(EnglishGreeter));
+
+        // Both should be resolvable
+        let first = c.resolve_named::<Arc<dyn Greeter>>("first");
+        let second = c.resolve_named::<Arc<dyn Greeter>>("second");
+        
+        assert_eq!(first.greet(), "Hello");
+        assert_eq!(second.greet(), "Hello");
+    }
+
+    #[test]
+    fn test_primitive_type_registration() {
+        let mut c = Container::new();
+        c.register(42_i32);
+        assert_eq!(c.resolve::<i32>(), 42);
+    }
+
+    #[test]
+    fn test_string_registration() {
+        let mut c = Container::new();
+        c.register(String::from("test string"));
+        assert_eq!(c.resolve::<String>(), "test string");
+    }
+
+    #[test]
+    fn test_arced_value_registration() {
+        let mut c = Container::new();
+        let value = Arc::new(String::from("arc value"));
+        c.register(value.clone());
+        
+        let resolved = c.resolve::<Arc<String>>();
+        assert_eq!(&*resolved, "arc value");
+    }
+
+    #[test]
+    fn test_inject_wraps_value() {
+        let value = Arc::new(EnglishGreeter) as Arc<dyn Greeter>;
+        let inject = Inject(value);
+        assert_eq!(inject.0.greet(), "Hello");
+    }
+
+    #[test]
+    fn test_inject_unwraps_value() {
+        let value = Arc::new(EnglishGreeter) as Arc<dyn Greeter>;
+        let inject = Inject(value);
+        let inner: Arc<dyn Greeter> = inject.0;
+        assert_eq!(inner.greet(), "Hello");
     }
 }

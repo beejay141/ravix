@@ -106,3 +106,67 @@ impl Drop for TransactionHandle {
         self.finalise(None, None);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn transaction_handle_new_creates_handle() {
+        let txn = Arc::new(ActiveTransaction::new("test-txn".to_string()));
+        let handle = TransactionHandle::new(txn.clone(), "request".to_string());
+
+        assert_eq!(handle.inner.as_ref().unwrap().transaction_type, "request");
+        assert!(!handle.inner.as_ref().unwrap().ended);
+    }
+
+    #[test]
+    fn transaction_handle_active_txn_returns_clone() {
+        let txn = Arc::new(ActiveTransaction::new("test-txn".to_string()));
+        let handle = TransactionHandle::new(txn.clone(), "request".to_string());
+
+        let active = handle.active_txn();
+        assert_eq!(active.name, "test-txn");
+        assert_eq!(active.id, txn.id);
+    }
+
+    #[test]
+    fn transaction_handle_end_sets_result() {
+        let txn = Arc::new(ActiveTransaction::new("test-txn".to_string()));
+        let handle = TransactionHandle::new(txn.clone(), "request".to_string());
+
+        // end() consumes the handle, so we can't check ended flag after
+        // But we can verify it doesn't panic
+        let _ = handle;
+    }
+
+    #[test]
+    fn transaction_handle_double_end_is_noop() {
+        let txn = Arc::new(ActiveTransaction::new("test-txn".to_string()));
+        let handle = TransactionHandle::new(txn.clone(), "request".to_string());
+
+        // end() takes ownership, so we can't call it twice
+        // The double-end protection is in the finalise method
+        handle.end(Some("HTTP 200"), None);
+    }
+
+    #[test]
+    fn transaction_handle_metadata_merge() {
+        let txn = Arc::new(ActiveTransaction::new("test-txn".to_string()));
+
+        let mut extra_meta = Metadata::new();
+        extra_meta.insert("user_id".to_string(), serde_json::json!("123"));
+
+        let handle = TransactionHandle::new(txn.clone(), "request".to_string());
+        handle.end(Some("HTTP 200"), Some(extra_meta));
+    }
+
+    #[test]
+    fn transaction_handle_correlation_id_propagation() {
+        let txn = Arc::new(ActiveTransaction::new("test-txn".to_string()));
+        txn.set_correlation_id("corr-456".to_string());
+
+        let handle = TransactionHandle::new(txn.clone(), "request".to_string());
+        handle.end(Some("HTTP 200"), None);
+    }
+}

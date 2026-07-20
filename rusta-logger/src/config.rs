@@ -157,3 +157,162 @@ impl LoggerConfigBuilder {
 pub fn config() -> LoggerConfigBuilder {
     LoggerConfigBuilder::new()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn config_builder_default_min_level() {
+        let cfg = config()
+            .service_name("svc")
+            .add_classification("PUBLIC", "/tmp/public.ndjson")
+            .default_classification("PUBLIC")
+            .build();
+
+        assert_eq!(cfg.min_level, LogLevel::Info);
+    }
+
+    #[test]
+    fn config_builder_custom_min_level() {
+        let cfg = config()
+            .service_name("svc")
+            .min_level(LogLevel::Debug)
+            .add_classification("PUBLIC", "/tmp/public.ndjson")
+            .default_classification("PUBLIC")
+            .build();
+
+        assert_eq!(cfg.min_level, LogLevel::Debug);
+    }
+
+    #[test]
+    fn config_builder_multiple_classifications() {
+        let cfg = config()
+            .service_name("svc")
+            .add_classification("PUBLIC", "/tmp/public.ndjson")
+            .add_classification("PRIVATE", "/tmp/private.ndjson")
+            .add_classification("CONFIDENTIAL", "/tmp/confidential.ndjson")
+            .default_classification("PUBLIC")
+            .build();
+
+        assert_eq!(cfg.classifications.len(), 3);
+        assert_eq!(cfg.classifications[0].name, "PUBLIC");
+        assert_eq!(cfg.classifications[1].name, "PRIVATE");
+        assert_eq!(cfg.classifications[2].name, "CONFIDENTIAL");
+    }
+
+    #[test]
+    fn config_builder_default_correlation_header() {
+        let cfg = config()
+            .service_name("svc")
+            .add_classification("PUBLIC", "/tmp/public.ndjson")
+            .default_classification("PUBLIC")
+            .build();
+
+        assert_eq!(cfg.correlation_id_header, "X-Correlation-ID");
+    }
+
+    #[test]
+    fn config_builder_custom_correlation_header() {
+        let cfg = config()
+            .service_name("svc")
+            .correlation_id_header("X-Request-ID")
+            .add_classification("PUBLIC", "/tmp/public.ndjson")
+            .default_classification("PUBLIC")
+            .build();
+
+        assert_eq!(cfg.correlation_id_header, "X-Request-ID");
+    }
+
+    #[test]
+    fn config_builder_default_classification_when_not_set() {
+        let cfg = config()
+            .service_name("svc")
+            .add_classification("PUBLIC", "/tmp/public.ndjson")
+            .build();
+
+        assert_eq!(cfg.default_classification, "PUBLIC");
+    }
+
+    #[test]
+    fn config_builder_service_context_accumulation() {
+        let cfg = config()
+            .service_name("my-service")
+            .service_version("1.0.0")
+            .environment("production")
+            .server_name("server-1")
+            .context("region", "us-east-1")
+            .context("instance_id", 42)
+            .add_classification("PUBLIC", "/tmp/public.ndjson")
+            .default_classification("PUBLIC")
+            .build();
+
+        assert_eq!(cfg.service.service_name, "my-service");
+        assert_eq!(cfg.service.service_version, Some("1.0.0".to_string()));
+        assert_eq!(cfg.service.environment, Some("production".to_string()));
+        assert_eq!(cfg.service.server_name, Some("server-1".to_string()));
+        assert_eq!(cfg.service.context.get("region").unwrap(), "us-east-1");
+        assert_eq!(cfg.service.context.get("instance_id").unwrap(), 42);
+    }
+
+    #[test]
+    fn config_builder_custom_channel_capacity() {
+        let cfg = config()
+            .service_name("svc")
+            .channel_capacity(100)
+            .add_classification("PUBLIC", "/tmp/public.ndjson")
+            .default_classification("PUBLIC")
+            .build();
+
+        assert_eq!(cfg.channel_capacity, Some(100));
+    }
+
+    #[test]
+    fn config_builder_custom_adapter() {
+        struct TestAdapter;
+        impl LogAdapter for TestAdapter {
+            fn format(&self, _entry: &crate::types::LogEntry) -> String {
+                "test".to_string()
+            }
+        }
+
+        let cfg = config()
+            .service_name("svc")
+            .adapter(Box::new(TestAdapter))
+            .add_classification("PUBLIC", "/tmp/public.ndjson")
+            .default_classification("PUBLIC")
+            .build();
+
+        // We just verify the adapter was set - we can't easily inspect it
+        // because it's a trait object
+        let _ = cfg;
+    }
+
+    #[test]
+    #[should_panic(expected = "service_name must be set")]
+    fn config_builder_panics_without_service_name() {
+        let _ = config()
+            .add_classification("PUBLIC", "/tmp/public.ndjson")
+            .default_classification("PUBLIC")
+            .build();
+    }
+
+    #[test]
+    #[should_panic(expected = "at least one classification must be added")]
+    fn config_builder_panics_without_classification() {
+        let _ = config()
+            .service_name("svc")
+            .default_classification("PUBLIC")
+            .build();
+    }
+
+    #[test]
+    #[should_panic(expected = "default_classification")]
+    fn config_builder_panics_with_invalid_default_classification() {
+        let _ = config()
+            .service_name("svc")
+            .add_classification("PUBLIC", "/tmp/public.ndjson")
+            .default_classification("NONEXISTENT")
+            .build();
+    }
+}

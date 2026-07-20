@@ -284,3 +284,189 @@ impl Http {
         (status, AxumJson(error.into().into_json())).into_response()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::to_bytes;
+    use serde::Serialize;
+
+    #[tokio::test]
+    async fn json_returns_200_and_body() {
+        let resp = Http::json(serde_json::json!({ "a": 1, "b": "x" }));
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["a"], 1);
+        assert_eq!(v["b"], "x");
+    }
+
+    #[tokio::test]
+    async fn created_returns_201() {
+        let resp = Http::created(serde_json::json!({ "id": 5 }));
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        let bytes = to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["id"], 5);
+    }
+
+    #[test]
+    fn ok_and_no_content_statuses() {
+        assert_eq!(Http::ok().status(), StatusCode::OK);
+        assert_eq!(Http::no_content().status(), StatusCode::NO_CONTENT);
+    }
+
+    #[tokio::test]
+    async fn error_with_message_renders_error_object() {
+        let resp = Http::error(400, ErrorResponse::message("Bad request"));
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let bytes = to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["error"], "Bad request");
+    }
+
+    #[derive(Serialize)]
+    struct MyError {
+        code: &'static str,
+        detail: &'static str,
+    }
+
+    #[tokio::test]
+    async fn error_with_struct_passes_through_object() {
+        let obj = MyError {
+            code: "E1",
+            detail: "failed",
+        };
+        let resp = Http::error(422, ErrorObject(obj));
+        assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        let bytes = to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["code"], "E1");
+        assert_eq!(v["detail"], "failed");
+    }
+
+    #[tokio::test]
+    async fn status_valid_code() {
+        let resp = Http::status(202);
+        assert_eq!(resp.status(), StatusCode::ACCEPTED);
+    }
+
+    #[tokio::test]
+    async fn status_invalid_code_returns_unused() {
+        // StatusCode::from_u16 returns the code as-is for unknown codes
+        let resp = Http::status(999);
+        assert_eq!(resp.status(), StatusCode::from_u16(999).unwrap());
+    }
+
+    #[tokio::test]
+    async fn with_status_valid_code() {
+        let resp = Http::with_status(202, serde_json::json!({ "status": "processing" }));
+        assert_eq!(resp.status(), StatusCode::ACCEPTED);
+        let bytes = to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["status"], "processing");
+    }
+
+    #[tokio::test]
+    async fn with_status_invalid_code_returns_unused() {
+        // StatusCode::from_u16 returns the code as-is for unknown codes
+        let resp = Http::with_status(999, serde_json::json!({ "x": 1 }));
+        assert_eq!(resp.status(), StatusCode::from_u16(999).unwrap());
+    }
+
+    #[tokio::test]
+    async fn forbidden_renders_error() {
+        let resp = Http::forbidden("Access denied");
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+        let bytes = to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["error"], "Access denied");
+    }
+
+    #[tokio::test]
+    async fn forbidden_with_renders_object() {
+        let resp = Http::forbidden_with(json!({ "code": "FORBIDDEN" }));
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+        let bytes = to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["code"], "FORBIDDEN");
+    }
+
+    #[tokio::test]
+    async fn unauthorized_renders_error() {
+        let resp = Http::unauthorized("Login required");
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+        let bytes = to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["error"], "Login required");
+    }
+
+    #[tokio::test]
+    async fn unauthorized_with_renders_object() {
+        let resp = Http::unauthorized_with(json!({ "code": "UNAUTH" }));
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+        let bytes = to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["code"], "UNAUTH");
+    }
+
+    #[tokio::test]
+    async fn unauthorize_is_alias_for_unauthorized() {
+        let resp = Http::unauthorize("Login required");
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn not_found_renders_error() {
+        let resp = Http::not_found("Missing");
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+        let bytes = to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["error"], "Missing");
+    }
+
+    #[tokio::test]
+    async fn not_found_with_renders_object() {
+        let resp = Http::not_found_with(json!({ "code": "NOT_FOUND" }));
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+        let bytes = to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["code"], "NOT_FOUND");
+    }
+
+    #[tokio::test]
+    async fn bad_request_renders_error() {
+        let resp = Http::bad_request("Invalid");
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let bytes = to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["error"], "Invalid");
+    }
+
+    #[tokio::test]
+    async fn bad_request_with_renders_object() {
+        let resp = Http::bad_request_with(json!({ "code": "BAD_REQ" }));
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let bytes = to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["code"], "BAD_REQ");
+    }
+
+    #[tokio::test]
+    async fn internal_error_renders_error() {
+        let resp = Http::internal_error("Crash");
+        assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let bytes = to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["error"], "Crash");
+    }
+
+    #[tokio::test]
+    async fn internal_error_with_renders_object() {
+        let resp = Http::internal_error_with(json!({ "code": "INT_ERR" }));
+        assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let bytes = to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["code"], "INT_ERR");
+    }
+}

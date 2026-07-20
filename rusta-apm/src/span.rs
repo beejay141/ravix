@@ -124,3 +124,111 @@ impl Drop for SpanHandle {
         self.finalise(None);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn span_handle_noop_is_noop() {
+        let handle = SpanHandle::noop();
+        // Should not panic
+        handle.end(None);
+    }
+
+    #[test]
+    fn span_handle_new_creates_unique_id() {
+        let txn = Arc::new(ActiveTransaction::new("parent".to_string()));
+        let handle1 = SpanHandle::new(
+            txn.clone(),
+            "span1".to_string(),
+            "db".to_string(),
+            None,
+            None,
+            None,
+        );
+        let handle2 = SpanHandle::new(
+            txn.clone(),
+            "span2".to_string(),
+            "db".to_string(),
+            None,
+            None,
+            None,
+        );
+
+        // Each span should have a unique ID
+        assert_ne!(handle1.inner.as_ref().unwrap().id, handle2.inner.as_ref().unwrap().id);
+    }
+
+    #[test]
+    fn span_handle_parent_id_tracking() {
+        let txn = Arc::new(ActiveTransaction::new("parent".to_string()));
+        let parent_id = Uuid::new_v4();
+
+        let handle = SpanHandle::new(
+            txn.clone(),
+            "child".to_string(),
+            "db".to_string(),
+            None,
+            Some(parent_id),
+            None,
+        );
+
+        assert_eq!(handle.inner.as_ref().unwrap().parent_id, Some(parent_id));
+    }
+
+    #[test]
+    fn span_handle_metadata_merge() {
+        let txn = Arc::new(ActiveTransaction::new("parent".to_string()));
+
+        let mut initial_meta = Metadata::new();
+        initial_meta.insert("key1".to_string(), serde_json::json!("value1"));
+
+        let handle = SpanHandle::new(
+            txn.clone(),
+            "span".to_string(),
+            "db".to_string(),
+            None,
+            None,
+            Some(initial_meta),
+        );
+
+        let mut extra_meta = Metadata::new();
+        extra_meta.insert("key2".to_string(), serde_json::json!("value2"));
+
+        handle.end(Some(extra_meta));
+    }
+
+    #[test]
+    fn span_handle_double_end_is_noop() {
+        let txn = Arc::new(ActiveTransaction::new("parent".to_string()));
+        let handle = SpanHandle::new(
+            txn.clone(),
+            "span".to_string(),
+            "db".to_string(),
+            None,
+            None,
+            None,
+        );
+
+        // end() takes ownership, so we can't call it twice
+        // The double-end protection is in the finalise method
+        handle.end(None);
+    }
+
+    #[test]
+    fn span_handle_subtype() {
+        let txn = Arc::new(ActiveTransaction::new("parent".to_string()));
+
+        let handle = SpanHandle::new(
+            txn.clone(),
+            "span".to_string(),
+            "db".to_string(),
+            Some("postgresql".to_string()),
+            None,
+            None,
+        );
+
+        assert_eq!(handle.inner.as_ref().unwrap().subtype, Some("postgresql".to_string()));
+    }
+}

@@ -124,3 +124,185 @@ async fn writer_loop(mut file: fs::File, mut receiver: Receiver<String>) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+    use std::sync::atomic::AtomicUsize;
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn apm_writer_handle_creates_file() {
+        let dir = tempdir().unwrap();
+        let log_path = dir.path().join("test-writer.ndjson");
+
+        let handle = ApmWriterHandle::new(&log_path, None).await.unwrap();
+        assert!(log_path.exists());
+
+        handle.shutdown().await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn apm_writer_handle_custom_capacity() {
+        let dir = tempdir().unwrap();
+        let log_path = dir.path().join("test-writer-cap.ndjson");
+
+        let handle = ApmWriterHandle::new(&log_path, Some(100)).await.unwrap();
+        assert!(log_path.exists());
+
+        handle.shutdown().await;
+    }
+
+    #[test]
+    fn apm_writer_write_line_sync() {
+        let (sender, _receiver): (Sender<String>, Receiver<String>) = mpsc::channel(8192);
+        let dropped = Arc::new(AtomicUsize::new(0));
+
+        let writer = ApmWriter { sender, dropped };
+        writer.write_line("test line".to_string());
+    }
+
+    #[test]
+    fn apm_writer_multiple_clones_sync() {
+        let (sender, _receiver): (Sender<String>, Receiver<String>) = mpsc::channel(8192);
+        let dropped = Arc::new(AtomicUsize::new(0));
+
+        let writer1 = ApmWriter {
+            sender: sender.clone(),
+            dropped: Arc::clone(&dropped),
+        };
+        let writer2 = ApmWriter {
+            sender: sender.clone(),
+            dropped: Arc::clone(&dropped),
+        };
+
+        writer1.write_line("line 1".to_string());
+        writer2.write_line("line 2".to_string());
+    }
+
+    #[test]
+    fn apm_writer_clone() {
+        let (sender, _receiver): (Sender<String>, Receiver<String>) = mpsc::channel(8192);
+        let dropped = Arc::new(AtomicUsize::new(0));
+
+        let writer1 = ApmWriter { sender, dropped };
+        let writer2 = writer1.clone();
+
+        writer1.write_line("line 1".to_string());
+        writer2.write_line("line 2".to_string());
+    }
+
+    #[test]
+    fn apm_writer_dropped_counter() {
+        let (sender, _receiver): (Sender<String>, Receiver<String>) = mpsc::channel(1);
+        let dropped = Arc::new(AtomicUsize::new(0));
+
+        let writer = ApmWriter { sender, dropped: Arc::clone(&dropped) };
+        writer.write_line("test".to_string());
+    }
+
+    #[test]
+    fn batch_size_constant() {
+        assert_eq!(BATCH_SIZE, 64);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn apm_writer_handle_writes_to_file() {
+        let dir = tempdir().unwrap();
+        let log_path = dir.path().join("test-writer.ndjson");
+
+        let handle = ApmWriterHandle::new(&log_path, None).await.unwrap();
+        let writer = handle.writer();
+
+        writer.write_line(r#"{"test": "data"}"#.to_string());
+        writer.write_line(r#"{"test": "data2"}"#.to_string());
+
+        // Drop the writer to close the channel
+        drop(writer);
+        // Give writer time to process
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        handle.shutdown().await;
+
+        let content = tokio::fs::read_to_string(&log_path).await.unwrap();
+        assert!(content.contains(r#"{"test": "data"}"#));
+        assert!(content.contains(r#"{"test": "data2"}"#));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn apm_writer_handle_batch_flush() {
+        let dir = tempdir().unwrap();
+        let log_path = dir.path().join("test-batch.ndjson");
+
+        let handle = ApmWriterHandle::new(&log_path, Some(100)).await.unwrap();
+        let writer = handle.writer();
+
+        // Write more than BATCH_SIZE lines to trigger flush
+        for i in 0..70 {
+            writer.write_line(format!(r#"{{"line": {}}}"#, i));
+        }
+
+        // Drop the writer to close the channel
+        drop(writer);
+        // Give writer time to process
+        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+
+        handle.shutdown().await;
+
+        let content = tokio::fs::read_to_string(&log_path).await.unwrap();
+        let lines: Vec<&str> = content.lines().collect();
+        assert_eq!(lines.len(), 70);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn apm_writer_handle_dropped_counter() {
+        let dir = tempdir().unwrap();
+        let log_path = dir.path().join("test-dropped.ndjson");
+
+        let handle = ApmWriterHandle::new(&log_path, Some(1)).await.unwrap();
+        let writer = handle.writer();
+
+        // Fill the channel
+        writer.write_line("line 1".to_string());
+        // This should be dropped
+        writer.write_line("line 2".to_string());
+
+        // Drop the writer to close the channel
+        drop(writer);
+        // Give writer time to process
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        handle.shutdown().await;
+
+        // The dropped counter should be incremented
+        // We can't easily access it, but we can verify the file only has 1 line
+        let content = tokio::fs::read_to_string(&log_path).await.unwrap();
+        let lines: Vec<&str> = content.lines().collect();
+        assert_eq!(lines.len(), 1);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn apm_writer_handle_multiple_writers() {
+        let dir = tempdir().unwrap();
+        let log_path = dir.path().join("test-multi.ndjson");
+
+        let handle = ApmWriterHandle::new(&log_path, None).await.unwrap();
+        let writer1 = handle.writer();
+        let writer2 = handle.writer();
+
+        writer1.write_line("from writer 1".to_string());
+        writer2.write_line("from writer 2".to_string());
+
+        // Drop the writers to close the channel
+        drop(writer1);
+        drop(writer2);
+        // Give writer time to process
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        handle.shutdown().await;
+
+        let content = tokio::fs::read_to_string(&log_path).await.unwrap();
+        assert!(content.contains("from writer 1"));
+        assert!(content.contains("from writer 2"));
+    }
+}

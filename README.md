@@ -54,7 +54,10 @@ impl UserController {
 async fn main() {
     let mut container = Container::new();
     // Register dependencies...
-    App::new().container(container).run("0.0.0.0:3000").await;
+    App::new().container(container).run("0.0.0.0:3000", |res| match res {
+        Ok(addr) => println!("Listening on {}", addr),
+        Err(msg) => eprintln!("Startup error: {}", msg),
+    }).await;
 }
 ```
 
@@ -163,7 +166,10 @@ let middleware = MiddlewareChain::new()
 App::new()
     .container(container)
     .middleware(middleware)
-    .run("0.0.0.0:3000")
+    .run("0.0.0.0:3000", |res| match res {
+        Ok(addr) => println!("Listening on {}", addr),
+        Err(msg) => eprintln!("Startup error: {}", msg),
+    })
     .await;
 ```
 
@@ -257,7 +263,10 @@ let cors = CorsConfig::builder()
 App::new()
     .container(container)
     .cors(cors)      // omit to disable CORS entirely
-    .run("0.0.0.0:3000")
+    .run("0.0.0.0:3000", |res| match res {
+        Ok(addr) => println!("Listening on {}", addr),
+        Err(msg) => eprintln!("Startup error: {}", msg),
+    })
     .await;
 ```
 
